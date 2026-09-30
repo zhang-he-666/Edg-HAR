@@ -1,0 +1,146 @@
+# CrossHAR-style experiment config for Edge-HAR
+# Protocol: pretrain on 80% of source datasets (full Stage 1-4)
+#           finetune on 10% of target dataset (Stage 2-4)
+#           test on remaining target dataset
+
+experiment:
+  name: "crosshar_protocol"
+  seed: 42
+  output_dir: "outputs/crosshar_exp"
+  log_every: 50
+  save_every: 10
+  eval_every: 5
+
+# ── Data ──────────────────────────────────────────────────────────────────────
+data:
+  data_root: "../TriFactor-HAR/data"
+  window_size: 120
+  hop_size: 60
+  in_channels: 6
+  num_classes: 4        # walk / upstairs / downstairs / sit+stand
+  num_domains: 4        # HHAR / Motion / UCI_HAR / Shoaib
+  num_subjects: 60
+
+  pretrain_source_rate: 0.8   # 80% of each source dataset for pretraining
+  finetune_target_rate: 0.1   # 10% of target dataset for fine-tuning
+
+  normalize: true
+  instance_norm: true
+
+  meta:
+    use_dataset_id: true
+    use_position: true
+    use_sampling_rate: true
+    use_sensor_type: true
+    num_positions: 8
+    num_sensor_types: 4
+    d_meta: 32
+
+  train_batch_size: 512
+  val_batch_size: 512
+  num_workers: 4
+
+# ── Model ─────────────────────────────────────────────────────────────────────
+model:
+  canonicalizer:
+    enabled: false
+    use_rotation: true
+    hidden: 128
+
+  tta_update_norm: false
+
+  shared_encoder:
+    in_channels: 6
+    stem_channels: 64
+    tcn_channels: 128
+    tcn_layers: 3
+    tcn_kernel: 5
+    transformer_dim: 128
+    transformer_heads: 4
+    transformer_layers: 2
+    dropout: 0.1
+
+  dim_s: 128
+  dim_d: 64
+  dim_a: 64
+
+  dynamics_encoder:
+    use_autocorr: true
+    use_spectral: true
+    spectral_bands: 8
+
+  acquisition_encoder:
+    d_meta: 32
+
+  cls_head:
+    hidden_dim: 128
+    dropout: 0.1
+
+  proto_head:
+    temperature: 0.1
+
+  decoder:
+    hidden_dim: 256
+    out_dim: 128
+    num_layers: 2
+
+  grl_lambda_max: 2.0
+  grl_schedule_steps: 4000
+  grl_lambda_max_d: 1.5
+  grl_schedule_steps_d: 2000
+  tta_bottleneck_dim: 64
+
+# ── training block (read by FactorizedHARModel + FactorizedTrainer) ───────────
+# Used for both pretraining and fine-tuning (full supervised losses).
+training:
+  stage1_epochs: 20
+  stage2_epochs: 20
+  stage3_epochs: 20
+  stage4_epochs: 20
+
+  optimizer:
+    name: "adamw"
+    lr: 1e-3
+    weight_decay: 1e-4
+
+  scheduler:
+    name: "cosine"
+    warmup_epochs: 5
+    min_lr: 1e-5
+
+  grad_clip: 1.0
+
+  # Loss weights
+  lambda_cls: 1.0
+  lambda_aux: 0.3
+  use_class_weight: false
+  lambda_adv: 1.0
+  lambda_adv_d: 0.8
+  lambda_mmd: 0.5
+  lambda_mmd_cc: 0.3
+  lambda_dom: 0.5
+  lambda_dec: 0.3
+  lambda_dyn_cls: 0.3
+  lambda_dyn_subj: 0.5
+  lambda_hsic_sa: 0.3
+  lambda_hsic_sd: 0.3
+  lambda_hsic_da: 0.3
+  lambda_concept_inv: 0.3
+  lambda_margin: 0.1
+  lambda_supcon: 0.1
+  lambda_pos_inv: 0.3
+  lambda_swap_cls: 0.3
+  lambda_proto: 0.3
+  lambda_concept: 0.1
+  lambda_topo: 0.1
+  lambda_rec: 0.3
+  lambda_swap: 0.2
+  same_class_mining: true
+  swap_prob: 0.5
+
+# ── Fine-tuning overrides ─────────────────────────────────────────────────────
+finetune:
+  stage2_epochs: 20
+  stage3_epochs: 15
+  stage4_epochs: 15
+  lr: 5e-4
